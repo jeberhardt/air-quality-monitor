@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air Quality</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --ink-2: #55554f; --ink-3: #8a8a83;
+    --line: #e6e5e0; --grid: #eeede8;
+    --good: #3c9a4f; --moderate: #d9a90b; --usg: #e5782a; --unhealthy: #cf3f3f; --very: #8a3fa6; --hazard: #7a1830;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514; --card: #1f1f1d; --ink: #f0efea; --ink-2: #b8b7b0; --ink-3: #85847d;
+      --line: #33332f; --grid: #2a2a27;
+      --good: #5cbf6e; --moderate: #f0c22e; --usg: #f39350; --unhealthy: #ec6a6a; --very: #b26fcb; --hazard: #c0506b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 32px 20px 48px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+  h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  .muted { color: var(--ink-3); font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-top: 16px; }
+  .hero { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+  .aqi { font-size: 72px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .aqi-label { font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
+  .cat { display: inline-flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 600; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; flex: none; }
+  .advice { color: var(--ink-2); margin-top: 4px; max-width: 46ch; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-top: 16px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .tile .v { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .u { font-size: 13px; color: var(--ink-3); margin-left: 3px; font-weight: 400; }
+  .tile .k { font-size: 12px; color: var(--ink-3); }
+  h2 { font-size: 15px; margin: 0 0 12px; font-weight: 600; }
+  .chart-wrap { position: relative; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .axis { fill: var(--ink-3); font-size: 11px; }
+  .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg);
+         font-size: 12px; padding: 6px 9px; border-radius: 8px; white-space: nowrap; opacity: 0; transition: opacity .1s; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 3px; }
+  details { margin-top: 14px; }
+  summary { cursor: pointer; color: var(--ink-2); font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--ink-3); font-weight: 500; }
+  .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .day { text-align: center; padding: 10px 4px; border-radius: 10px; border: 1px solid var(--line); }
+  .day .d { font-size: 12px; color: var(--ink-3); }
+  .day .n { font-size: 20px; font-weight: 600; margin: 4px 0; font-variant-numeric: tabular-nums; }
+  .day .bar { height: 4px; border-radius: 2px; margin: 0 10px; }
+  .notice { font-size: 13px; color: var(--ink-2); background: var(--grid); border-radius: 8px; padding: 8px 12px; margin-top: 12px; display: none; }
+  footer { margin-top: 24px; font-size: 12px; color: var(--ink-3); text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="name">Air quality</h1>
+    <div class="muted" id="updated">Loading…</div>
+  </header>
+  <div class="notice" id="notice"></div>
+
+  <section class="card hero" aria-live="polite">
+    <div>
+      <div class="aqi-label">US AQI</div>
+      <div class="aqi" id="aqi">–</div>
+    </div>
+    <div>
+      <div class="cat"><span class="dot" id="catdot"></span><span id="cat">–</span></div>
+      <div class="advice" id="advice"></div>
+      <div class="muted" id="main" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <section class="tiles">
+    <div class="tile"><div class="k">PM2.5</div><div class="v" id="pm25">–<span class="u">µg/m³</span></div></div>
+    <div class="tile"><div class="k">PM10</div><div class="v" id="pm10">–<span class="u">µg/m³</span></div></div>
+    <div class="tile"><div class="k">PM1</div><div class="v" id="pm1">–<span class="u">µg/m³</span></div></div>
+    <div class="tile"><div class="k">Temperature</div><div class="v" id="tp">–<span class="u">°C</span></div></div>
+    <div class="tile"><div class="k">Humidity</div><div class="v" id="hm">–<span class="u">%</span></div></div>
+    <div class="tile"><div class="k">Pressure</div><div class="v" id="pr">–<span class="u">hPa</span></div></div>
+  </section>
+
+  <section class="card">
+    <h2>US AQI, last 48 hours</h2>
+    <div class="chart-wrap">
+      <svg id="chart" viewBox="0 0 800 220" role="img" aria-label="Hourly US AQI for the last 48 hours"></svg>
+      <div class="tip" id="tip"></div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <details>
+      <summary>Show as table</summary>
+      <table id="table"><thead><tr><th>Hour</th><th>US AQI</th><th>PM2.5 µg/m³</th><th>Temp °C</th><th>Humidity %</th></tr></thead><tbody></tbody></table>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Daily average US AQI, last 7 days</h2>
+    <div class="days" id="days"></div>
+  </section>
+
+  <footer>Data from an IQAir AirVisual monitor · refreshes every 5 minutes</footer>
+</main>
+
+<script>
+// Where the page gets its data. Your server or Worker serves this path.
+const DATA_URL = "/api/air";
+const REFRESH_MS = 5 * 60 * 1000;
+// Sample data, used only when DATA_URL can't be reached (e.g. opening this file directly).
+const SAMPLE = {"name":"Glen Leven-PARA_IQ","current":{"pm25":{"conc":2,"aqius":11,"aqicn":3},"pm10":{"conc":3,"aqius":3,"aqicn":3},"pm1":{"conc":2,"aqius":11,"aqicn":3},"pr":99900,"hm":63,"tp":3.1,"ts":"2026-11-13T15:55:45.000Z","mainus":"pm25","maincn":"pm25","aqius":11,"aqicn":3},"hourly":[{"ts":"2026-11-13T14:00:00.000Z","pm1":2,"pr":99878,"hm":67,"tp":2,"pm25":{"aqius":11,"aqicn":3,"conc":2},"pm10":{"aqius":3,"aqicn":3,"conc":3}},{"ts":"2026-11-13T13:00:00.000Z","pm1":2,"pr":99865,"hm":71,"tp":2,"pm25":{"aqius":11,"aqicn":3,"conc":2},"pm10":{"aqius":3,"aqicn":3,"conc":3}},{"ts":"2026-11-13T12:00:00.000Z","pm1":1,"pr":99839,"hm":74,"tp":1,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-13T11:00:00.000Z","pm1":1,"pr":99810,"hm":76,"tp":1,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-13T10:00:00.000Z","pm1":2,"pr":99787,"hm":81,"tp":0,"pm25":{"aqius":11,"aqicn":3,"conc":2},"pm10":{"aqius":3,"aqicn":3,"conc":3}},{"ts":"2026-11-13T09:00:00.000Z","pm1":2,"pr":99757,"hm":82,"tp":-1,"pm25":{"aqius":11,"aqicn":3,"conc":2},"pm10":{"aqius":3,"aqicn":3,"conc":3}},{"ts":"2026-11-13T08:00:00.000Z","pm1":1,"pr":99744,"hm":80,"tp":-1,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-13T07:00:00.000Z","pm1":1,"pr":99747,"hm":78,"tp":-1,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-13T06:00:00.000Z","pm1":1,"pr":99730,"hm":73,"tp":0,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-13T05:00:00.000Z","pm1":1,"pr":99719,"hm":71,"tp":1,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-13T04:00:00.000Z","pm1":1,"pr":99710,"hm":68,"tp":1,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-13T03:00:00.000Z","pm1":1,"pr":99728,"hm":68,"tp":1,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-13T02:00:00.000Z","pm1":1,"pr":99745,"hm":67,"tp":2,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-13T01:00:00.000Z","pm1":1,"pr":99722,"hm":67,"tp":2,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-13T00:00:00.000Z","pm1":1,"pr":99672,"hm":68,"tp":3,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":1,"aqicn":1,"conc":1}},{"ts":"2026-11-12T23:00:00.000Z","pm1":1,"pr":99606,"hm":67,"tp":4,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T22:00:00.000Z","pm1":1,"pr":99552,"hm":64,"tp":5,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":3,"aqicn":3,"conc":3}},{"ts":"2026-11-12T21:00:00.000Z","pm1":1,"pr":99486,"hm":62,"tp":6,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T20:00:00.000Z","pm1":1,"pr":99433,"hm":61,"tp":6,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T19:00:00.000Z","pm1":1,"pr":99400,"hm":59,"tp":7,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T18:00:00.000Z","pm1":1,"pr":99440,"hm":64,"tp":6,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T17:00:00.000Z","pm1":1,"pr":99509,"hm":68,"tp":5,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":3,"aqicn":3,"conc":3}},{"ts":"2026-11-12T16:00:00.000Z","pm1":1,"pr":99572,"hm":75,"tp":4,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T15:00:00.000Z","pm1":2,"pr":99602,"hm":83,"tp":4,"pm25":{"aqius":11,"aqicn":3,"conc":2},"pm10":{"aqius":3,"aqicn":3,"conc":3}},{"ts":"2026-11-12T14:00:00.000Z","pm1":1,"pr":99602,"hm":89,"tp":3,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T13:00:00.000Z","pm1":1,"pr":99598,"hm":90,"tp":3,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T12:00:00.000Z","pm1":1,"pr":99568,"hm":89,"tp":3,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T11:00:00.000Z","pm1":1,"pr":99527,"hm":90,"tp":4,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T10:00:00.000Z","pm1":1,"pr":99510,"hm":92,"tp":4,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T09:00:00.000Z","pm1":1,"pr":99499,"hm":95,"tp":4,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T08:00:00.000Z","pm1":1,"pr":99549,"hm":94,"tp":4,"pm25":{"aqius":6,"aqicn":1,"conc":1},"pm10":{"aqius":2,"aqicn":2,"conc":2}},{"ts":"2026-11-12T07:00:00.000Z","pm1":2,"pr":99597,"hm":92,"tp":5,"pm25":{"aqius":11,"aqicn":3,"conc":2},"pm10":{"aqius":4,"aqicn":4,"conc":4}},{"ts":"2026-11-12T06:00:00.000Z","pm1":5,"pr":99610,"hm":91,"tp":6,"pm25":{"aqius":39,"aqicn":10,"conc":7},"pm10":{"aqius":10,"aqicn":11,"conc":11}},{"ts":"2026-11-12T05:00:00.000Z","pm1":4,"pr":99650,"hm":90,"tp":6,"pm25":{"aqius":28,"aqicn":7,"conc":5},"pm10":{"aqius":7,"aqicn":8,"conc":8}},{"ts":"2026-11-12T04:00:00.000Z","pm1":2,"pr":99704,"hm":89,"tp":6,"pm25":{"aqius":11,"aqicn":3,"conc":2},"pm10":{"aqius":4,"aqicn":4,"conc":4}},{"ts":"2026-11-12T03:00:00.000Z","pm1":2,"pr":99751,"hm":91,"tp":6,"pm25":{"aqius":17,"aqicn":4,"conc":3},"pm10":{"aqius":5,"aqicn":5,"conc":5}},{"ts":"2026-11-12T02:00:00.000Z","pm1":4,"pr":99809,"hm":92,"tp":7,"pm25":{"aqius":28,"aqicn":7,"conc":5},"pm10":{"aqius":7,"aqicn":8,"conc":8}},{"ts":"2026-11-12T01:00:00.000Z","pm1":5,"pr":99866,"hm":92,"tp":7,"pm25":{"aqius":39,"aqicn":10,"conc":7},"pm10":{"aqius":10,"aqicn":11,"conc":11}},{"ts":"2026-11-12T00:00:00.000Z","pm1":8,"pr":99900,"hm":91,"tp":7,"pm25":{"aqius":55,"aqicn":16,"conc":11},"pm10":{"aqius":17,"aqicn":18,"conc":18}},{"ts":"2026-11-11T23:00:00.000Z","pm1":4,"pr":99881,"hm":85,"tp":8,"pm25":{"aqius":28,"aqicn":7,"conc":5},"pm10":{"aqius":7,"aqicn":8,"conc":8}},{"ts":"2026-11-11T22:00:00.000Z","pm1":2,"pr":99882,"hm":76,"tp":9,"pm25":{"aqius":17,"aqicn":4,"conc":3},"pm10":{"aqius":6,"aqicn":6,"conc":6}},{"ts":"2026-11-11T21:00:00.000Z","pm1":2,"pr":99892,"hm":73,"tp":9,"pm25":{"aqius":22,"aqicn":6,"conc":4},"pm10":{"aqius":7,"aqicn":8,"conc":8}},{"ts":"2026-11-11T20:00:00.000Z","pm1":2,"pr":99903,"hm":69,"tp":10,"pm25":{"aqius":11,"aqicn":3,"conc":2},"pm10":{"aqius":4,"aqicn":4,"conc":4}},{"ts":"2026-11-11T19:00:00.000Z","pm1":2,"pr":99955,"hm":70,"tp":10,"pm25":{"aqius":11,"aqicn":3,"conc":2},"pm10":{"aqius":4,"aqicn":4,"conc":4}},{"ts":"2026-11-11T18:00:00.000Z","pm1":2,"pr":100010,"hm":73,"tp":10,"pm25":{"aqius":17,"aqicn":4,"conc":3},"pm10":{"aqius":5,"aqicn":5,"conc":5}},{"ts":"2026-11-11T17:00:00.000Z","pm1":4,"pr":100066,"hm":73,"tp":10,"pm25":{"aqius":28,"aqicn":7,"conc":5},"pm10":{"aqius":8,"aqicn":9,"conc":9}},{"ts":"2026-11-11T16:00:00.000Z","pm1":6,"pr":100147,"hm":74,"tp":9,"pm25":{"aqius":44,"aqicn":11,"conc":8},"pm10":{"aqius":15,"aqicn":16,"conc":16}},{"ts":"2026-11-11T15:00:00.000Z","pm1":5,"pr":100214,"hm":76,"tp":9,"pm25":{"aqius":33,"aqicn":9,"conc":6},"pm10":{"aqius":8,"aqicn":9,"conc":9}}],"daily":[{"ts":"2026-11-13T00:00:00.000Z","pm1":1.3,"pr":99763.5,"hm":72.7,"tp":0.9,"pm25":{"aqius":7,"aqicn":2,"conc":1.3},"pm10":{"aqius":2,"aqicn":2,"conc":2.2}},{"ts":"2026-11-12T00:00:00.000Z","pm1":2,"pr":99597.5,"hm":82.1,"tp":5.1,"pm25":{"aqius":14,"aqicn":4,"conc":2.5},"pm10":{"aqius":4,"aqicn":4,"conc":4.3}},{"ts":"2026-11-11T00:00:00.000Z","pm1":3.1,"pr":100163.1,"hm":78.8,"tp":7.2,"pm25":{"aqius":23,"aqicn":6,"conc":4.1},"pm10":{"aqius":6,"aqicn":7,"conc":7}},{"ts":"2026-11-10T00:00:00.000Z","pm1":3,"pr":100050.6,"hm":67.8,"tp":10,"pm25":{"aqius":21,"aqicn":5,"conc":3.8},"pm10":{"aqius":6,"aqicn":6,"conc":6.3}},{"ts":"2026-11-09T00:00:00.000Z","pm1":1.9,"pr":99962.2,"hm":72.8,"tp":7.6,"pm25":{"aqius":13,"aqicn":3,"conc":2.4},"pm10":{"aqius":3,"aqicn":3,"conc":3.6}},{"ts":"2026-11-08T00:00:00.000Z","pm1":1.6,"pr":99988.9,"hm":61.1,"tp":19.8,"pm25":{"aqius":11,"aqicn":3,"conc":2},"pm10":{"aqius":3,"aqicn":3,"conc":3.3}},{"ts":"2026-11-07T00:00:00.000Z","pm1":0.2,"pr":100159.6,"hm":58,"tp":22,"pm25":{"aqius":1,"aqicn":0,"conc":0.2},"pm10":{"aqius":0,"aqicn":0,"conc":0.4}},{"ts":"2026-11-06T00:00:00.000Z","pm1":0.1,"pr":99812.3,"hm":59.1,"tp":22.3,"pm25":{"aqius":1,"aqicn":0,"conc":0.1},"pm10":{"aqius":0,"aqicn":0,"conc":0.1}},{"ts":"2026-11-05T00:00:00.000Z","pm1":5.6,"pr":99494.4,"hm":60.3,"tp":22.8,"pm25":{"aqius":39,"aqicn":10,"conc":7},"pm10":{"aqius":9,"aqicn":10,"conc":10.5}},{"ts":"2026-11-04T00:00:00.000Z","pm1":1.5,"pr":100244.8,"hm":58.4,"tp":22.8,"pm25":{"aqius":8,"aqicn":2,"conc":1.5},"pm10":{"aqius":2,"aqicn":2,"conc":2.6}},{"ts":"2026-11-03T00:00:00.000Z","pm1":1.3,"pr":100773.4,"hm":58.2,"tp":22.5,"pm25":{"aqius":8,"aqicn":2,"conc":1.4},"pm10":{"aqius":2,"aqicn":2,"conc":2.5}},{"ts":"2026-11-02T00:00:00.000Z","pm1":1.3,"pr":101315.3,"hm":57.3,"tp":21.9,"pm25":{"aqius":8,"aqicn":2,"conc":1.4},"pm10":{"aqius":2,"aqicn":2,"conc":2.5}},{"ts":"2026-11-01T00:00:00.000Z","pm1":1.3,"pr":101855.3,"hm":55.5,"tp":21.6,"pm25":{"aqius":8,"aqicn":2,"conc":1.4},"pm10":{"aqius":2,"aqicn":2,"conc":2.5}},{"ts":"2026-10-31T00:00:00.000Z","pm1":0.5,"pr":101872,"hm":55.5,"tp":22,"pm25":{"aqius":3,"aqicn":1,"conc":0.5},"pm10":{"aqius":1,"aqicn":1,"conc":1}},{"ts":"2026-10-30T00:00:00.000Z","pm1":2,"pr":100974.6,"hm":58.3,"tp":22.3,"pm25":{"aqius":13,"aqicn":3,"conc":2.4},"pm10":{"aqius":3,"aqicn":3,"conc":3.8}},{"ts":"2026-10-29T00:00:00.000Z","pm1":1.8,"pr":100664.9,"hm":57.3,"tp":22,"pm25":{"aqius":12,"aqicn":3,"conc":2.2},"pm10":{"aqius":3,"aqicn":3,"conc":3.7}},{"ts":"2026-10-28T00:00:00.000Z","pm1":0,"pr":101476.9,"hm":57.4,"tp":22,"pm25":{"aqius":0,"aqicn":0,"conc":0},"pm10":{"aqius":0,"aqicn":0,"conc":0.1}},{"ts":"2026-10-27T00:00:00.000Z","pm1":0,"pr":101754.1,"hm":58.1,"tp":21.9,"pm25":{"aqius":0,"aqicn":0,"conc":0},"pm10":{"aqius":0,"aqicn":0,"conc":0}}]};
+
+const CATS = [
+  { max: 50,  name: "Good", v: "--good", advice: "Air quality is satisfactory. Enjoy being outside." },
+  { max: 100, name: "Moderate", v: "--moderate", advice: "Acceptable. Unusually sensitive people should consider limiting long outdoor exertion." },
+  { max: 150, name: "Unhealthy for sensitive groups", v: "--usg", advice: "Sensitive groups should reduce prolonged or heavy outdoor exertion." },
+  { max: 200, name: "Unhealthy", v: "--unhealthy", advice: "Everyone should reduce prolonged or heavy outdoor exertion." },
+  { max: 300, name: "Very unhealthy", v: "--very", advice: "Avoid prolonged outdoor exertion; sensitive groups should stay indoors." },
+  { max: Infinity, name: "Hazardous", v: "--hazard", advice: "Everyone should avoid outdoor activity." },
+];
+const cat = aqi => CATS.find(c => aqi <= c.max);
+const color = aqi => `var(${cat(aqi).v})`;
+const POLL = { pm25: "PM2.5", pm10: "PM10", pm1: "PM1", o3: "Ozone", n2: "NO₂", s2: "SO₂", co: "CO" };
+const $ = id => document.getElementById(id);
+const fmtTime = ts => new Date(ts).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+const fmtHour = ts => new Date(ts).toLocaleTimeString([], { hour: "numeric" });
+const setVal = (id, val, digits = 0) => {
+  const el = $(id), unit = el.querySelector(".u");
+  el.textContent = val == null ? "–" : Number(val).toFixed(digits);
+  el.appendChild(unit);
+};
+
+async function load() {
+  let data, live = true;
+  try {
+    const r = await fetch(DATA_URL, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    data = await r.json();
+    if (!data.current) throw new Error("bad data");
+  } catch (e) {
+    data = SAMPLE; live = false;
+  }
+  render(data, live);
+}
+
+function render(d, live) {
+  const c = d.current;
+  $("name").textContent = d.name || "Air quality";
+  const ageMin = Math.round((Date.now() - new Date(c.ts)) / 60000);
+  $("updated").textContent = "Updated " + fmtTime(c.ts);
+  const n = $("notice");
+  if (!live) { n.style.display = "block"; n.textContent = "Showing saved sample data — the live feed isn't connected yet."; }
+  else if (ageMin > 30) { n.style.display = "block"; n.textContent = `The monitor hasn't reported for ${ageMin} minutes; values may be out of date.`; }
+  else n.style.display = "none";
+
+  const k = cat(c.aqius);
+  $("aqi").textContent = c.aqius;
+  $("catdot").style.background = color(c.aqius);
+  $("cat").textContent = k.name;
+  $("advice").textContent = k.advice;
+  $("main").textContent = "Main pollutant: " + (POLL[c.mainus] || c.mainus);
+  setVal("pm25", c.pm25?.conc, 1); setVal("pm10", c.pm10?.conc, 1); setVal("pm1", c.pm1?.conc, 1);
+  setVal("tp", c.tp, 1); setVal("hm", c.hm); setVal("pr", c.pr != null ? c.pr / 100 : null);
+
+  drawChart([...d.hourly].reverse());
+  drawDays([...d.daily].slice(0, 7).reverse());
+}
+
+function drawChart(rows) {
+  const svg = $("chart"), W = 800, H = 220, L = 34, R = 8, T = 10, B = 26;
+  const vals = rows.map(r => r.pm25.aqius);
+  const top = Math.max(50, Math.ceil(Math.max(...vals) / 25) * 25);
+  const step = (W - L - R) / rows.length, bw = Math.max(2, step - 2);
+  const y = v => T + (H - T - B) * (1 - v / top);
+  let s = "";
+  for (let g = 0; g <= top; g += top > 100 ? 50 : 25) {
+    s += `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="var(--grid)" stroke-width="1"/>`;
+    s += `<text class="axis" x="${L - 6}" y="${y(g) + 4}" text-anchor="end">${g}</text>`;
+  }
+  rows.forEach((r, i) => {
+    const v = r.pm25.aqius, x = L + i * step + 1, h = Math.max(2, y(0) - y(v));
+    s += `<path d="${barPath(x, y(0) - h, bw, h)}" fill="${color(v)}"/>`;
+    s += `<rect x="${L + i * step}" y="${T}" width="${step}" height="${H - T - B}" fill="transparent" data-i="${i}"/>`;
+    if (new Date(r.ts).getHours() % 6 === 0)
+      s += `<text class="axis" x="${x + bw / 2}" y="${H - 8}" text-anchor="middle">${fmtHour(r.ts)}</text>`;
+  });
+  svg.innerHTML = s;
+
+  const tip = $("tip"), wrap = svg.parentElement;
+  svg.onmousemove = e => {
+    const i = e.target.dataset?.i; if (i == null) { tip.style.opacity = 0; return; }
+    const r = rows[i];
+    tip.innerHTML = `<b>${fmtTime(r.ts)}</b><br>US AQI ${r.pm25.aqius} · ${cat(r.pm25.aqius).name}<br>PM2.5 ${r.pm25.conc} µg/m³ · ${r.tp}°C · ${r.hm}%`;
+    const box = wrap.getBoundingClientRect();
+    let left = e.clientX - box.left + 12;
+    if (left > box.width - 220) left = e.clientX - box.left - 220;
+    tip.style.left = left + "px"; tip.style.top = (e.clientY - box.top - 60) + "px"; tip.style.opacity = 1;
+  };
+  svg.onmouseleave = () => tip.style.opacity = 0;
+
+  const used = [...new Set(vals.map(v => cat(v)))];
+  $("legend").innerHTML = used.map(k => `<span><i class="dot" style="background:var(${k.v})"></i>${k.name}</span>`).join("");
+  $("table").querySelector("tbody").innerHTML = [...rows].reverse().map(r =>
+    `<tr><td>${fmtTime(r.ts)}</td><td>${r.pm25.aqius}</td><td>${r.pm25.conc}</td><td>${r.tp}</td><td>${r.hm}</td></tr>`).join("");
+}
+
+// Bar with 4px rounded top corners, square at the baseline.
+function barPath(x, y, w, h) {
+  const r = Math.min(4, w / 2, h);
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+}
+
+function drawDays(days) {
+  $("days").innerHTML = days.map(d => {
+    const day = new Date(d.ts).toLocaleDateString([], { weekday: "short", timeZone: "UTC" });
+    return `<div class="day" title="${cat(d.pm25.aqius).name}"><div class="d">${day}</div><div class="n">${d.pm25.aqius}</div><div class="bar" style="background:${color(d.pm25.aqius)}"></div></div>`;
+  }).join("");
+}
+
+load();
+setInterval(load, REFRESH_MS);
+</script>
+</body>
+</html>
